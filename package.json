@@ -1,0 +1,20 @@
+{
+  "name": "datascrap-playwright",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^25.3.1"
+  },
+  "dependencies": {
+    "@google/genai": "^1.43.0",
+    "@google/generative-ai": "^0.24.1",
+    "playwright": "^1.58.2",
+    "tesseract.js": "^7.0.0"
+  }
+}
