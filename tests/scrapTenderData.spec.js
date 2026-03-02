@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import fs from 'fs';
 
-const genAI = new GoogleGenerativeAI('');
+const genAI = new GoogleGenerativeAI('AIzaSyC512df6_OaAEBXI0KJW54rhRaI1Z9t-Zw');
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 test('fetch tender details', async ({ page }) => {
@@ -18,6 +18,7 @@ test('fetch tender details', async ({ page }) => {
 
     await checkIfTenderFound(page);
 
+    await page.screenshot({path:'tenderFound.png'});
     await goToTenderDetails(page);    
 });
 
@@ -35,7 +36,7 @@ async function goToTenderDetails(page){
     await page.screenshot({path:'tenderInfo.png'});
 
     if (await page.getByRole('cell', { name: 'Tender Details', exact: true }).isVisible()) {
-        clickOnViewMoreDetails(page)
+        //clickOnViewMoreDetails(page)
     }else{
         throw new Error('Error occurred while clicking on- View Tender Information');
     }
@@ -86,7 +87,7 @@ async function checkCaptchaIsValid(page){
             if (await page.getByText('Invalid Captcha! Please Enter').isVisible()) {
                 continue;
             } else {
-                //await page.screenshot({path:'tenderInfo.png'})
+                await page.screenshot({path:'tenderFound.png'})
 
                 await expect(page.locator('#table')).toBeVisible();
                 break;
@@ -95,7 +96,7 @@ async function checkCaptchaIsValid(page){
         }catch(error){
 
             if (error instanceof Error) {
-                throw new Error(`API Call Failed: ${error.message}`);
+                throw new Error(error.message);
             }else{
                 if (attempt === MAX_RETRIES) throw new Error("Failed to solve captcha after maximum retries.");
             
@@ -123,7 +124,7 @@ async function getCaptchaText(page){
             const buffer = await captchaLocator.screenshot();
 
             const base64String = buffer.toString('base64');
-            fs.writeFileSync('debug_canvas.png', base64String, { encoding: 'base64' });
+            fs.writeFileSync(`captcha${attempt}.png`, base64String, { encoding: 'base64' });
 
             const prompt = `Give me written letters from given captcha image in the given schema
                     {
@@ -149,7 +150,9 @@ async function getCaptchaText(page){
 
             console.log("Gemini Analysis:", response.text());
 
-            const data = JSON.parse(response.text());
+            const cleanedText = response.text().replace(/```json|```/g, "").trim();
+
+            const data = JSON.parse(cleanedText);
             const captcha = data.captchaText;
 
             if(captcha!==undefined){
