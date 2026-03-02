@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import fs from 'fs';
 
-const genAI = new GoogleGenerativeAI('AIzaSyBSh61ziaqG4dTWwgffVb71Jo8vkzPifLI');
+const genAI = new GoogleGenerativeAI('Add your gemini key');
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 test('fetch tender details', async ({ page }) => {
