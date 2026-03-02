@@ -2,8 +2,9 @@
 import { test, expect } from '@playwright/test';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import fs from 'fs';
+import { API_KEY, MAX_RETRIES, retryDelay } from '../data/constant';
 
-const genAI = new GoogleGenerativeAI('AIzaSyC512df6_OaAEBXI0KJW54rhRaI1Z9t-Zw');
+const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 test('fetch tender details', async ({ page }) => {
@@ -25,6 +26,39 @@ test('fetch tender details', async ({ page }) => {
 /**
  * @param {import('@playwright/test').Page} page
  */
+async function getBasicDetails(page){
+    const table = page.locator('table.tablebg').first(); 
+    const rows = table.locator('tr');
+    const rowCount = await rows.count();
+
+    /** @type {Record<string, string>} */
+    let result = {};
+
+    for (let i = 0; i < rowCount; i++) {
+
+        const captions = rows.nth(i).locator('td.td_caption');
+        const fields = rows.nth(i).locator('td.td_field');
+
+        const captionCount = await captions.count();
+        const fieldCount = await fields.count();
+
+        for (let j = 0; j < captionCount; j++) {
+
+            const key = await captions.nth(j).innerText();
+            const value = await fields.nth(j)?.innerText();
+
+            if (key && value) {
+                result[key.trim()] = value.trim();
+            }
+        }
+    }
+
+    fs.writeFileSync('test-results/Tender_details.json', JSON.stringify(result, null, 2));
+}
+
+/**
+ * @param {import('@playwright/test').Page} page
+ */
 async function goToTenderDetails(page){
     await page.locator('#table tbody tr')
     .locator('a[title="View Tender Information"]')
@@ -37,6 +71,7 @@ async function goToTenderDetails(page){
 
     if (await page.getByRole('cell', { name: 'Tender Details', exact: true }).isVisible()) {
         //clickOnViewMoreDetails(page)
+        await getBasicDetails(page);
     }else{
         throw new Error('Error occurred while clicking on- View Tender Information');
     }
@@ -67,9 +102,6 @@ async function checkIfTenderFound(page){
  * @param {import('@playwright/test').Page} page
  */
 async function checkCaptchaIsValid(page){
-    const MAX_RETRIES = 3;
-
-    const retryDelay = 3000;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
@@ -111,10 +143,6 @@ async function checkCaptchaIsValid(page){
  */
 async function getCaptchaText(page){
     const captchaSelector = '#captchaImage';
-
-    const MAX_RETRIES = 10;
-
-    const retryDelay = 3000;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
