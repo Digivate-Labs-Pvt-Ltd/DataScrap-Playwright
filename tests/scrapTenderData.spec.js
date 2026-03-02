@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import fs from 'fs';
 
-const genAI = new GoogleGenerativeAI('Add your gemini key');
+const genAI = new GoogleGenerativeAI('');
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 test('fetch tender details', async ({ page }) => {
@@ -93,9 +93,14 @@ async function checkCaptchaIsValid(page){
             }
             
         }catch(error){
-            if (attempt === MAX_RETRIES) throw new Error("Failed to solve captcha after maximum retries.");
+
+            if (error instanceof Error) {
+                throw new Error(`API Call Failed: ${error.message}`);
+            }else{
+                if (attempt === MAX_RETRIES) throw new Error("Failed to solve captcha after maximum retries.");
             
-            await page.waitForTimeout(retryDelay);
+                await page.waitForTimeout(retryDelay);
+            }
         }
     }
 }
@@ -155,14 +160,13 @@ async function getCaptchaText(page){
             }
         }catch(error){
             if (error instanceof Error) {
-                console.error("API Call Failed:", error.message);
+                throw new Error(`API Call Failed: ${error.message}`);
             } else {
                 console.error("An unexpected error occurred:", String(error));
-            }
-
             if (attempt === MAX_RETRIES) throw new Error("Failed to extract captcha from gemini after maximum retries.");
             
             await page.waitForTimeout(retryDelay);
+            }            
         }
     }
 }
