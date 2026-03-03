@@ -1,4 +1,4 @@
-// @ts-check
+// @ts-nocheck
 import { test, expect } from '@playwright/test';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import fs from 'fs';
@@ -27,33 +27,118 @@ test('fetch tender details', async ({ page }) => {
  * @param {import('@playwright/test').Page} page
  */
 async function getBasicDetails(page){
-    const table = page.locator('table.tablebg').first(); 
-    const rows = table.locator('tr');
-    const rowCount = await rows.count();
+    
+    const nestedTablesJson = await page.evaluate(() => {
+            const results = {};
+            const headerTexts = Array.from(document.querySelectorAll('.textbold1'));
 
-    /** @type {Record<string, string>} */
-    let result = {};
+            headerTexts.forEach(headerEl => {
+    
+                const sectionName = headerEl.innerText.replace(/\s+/g, ' ').trim();
+                if (!sectionName || sectionName === "Tender Details") return;
 
-    for (let i = 0; i < rowCount; i++) {
+                let headerRow = headerEl.closest('td.pageheader')?.parentElement;
+                if (!headerRow) return;
 
-        const captions = rows.nth(i).locator('td.td_caption');
-        const fields = rows.nth(i).locator('td.td_field');
+                let dataRow = headerRow.nextElementSibling;
+    
+                while (dataRow && dataRow.innerText.trim() === "") {
+                    dataRow = dataRow.nextElementSibling;
+                }
 
-        const captionCount = await captions.count();
-        const fieldCount = await fields.count();
+                if (!dataRow) return;
 
-        for (let j = 0; j < captionCount; j++) {
+                const dataTable = dataRow.querySelector('table.tablebg, table.list_table, table#packetTableView');
+                if (!dataTable) return;
 
-            const key = await captions.nth(j).innerText();
-            const value = await fields.nth(j)?.innerText();
+                // --- SPECIFIC FIX FOR COVERS INFORMATION ---
+                if (sectionName.includes("Covers Information") || dataTable.id === "packetTableView") {
+                    const rows = Array.from(dataTable.querySelectorAll('tr'));
+                    const headerRowEl = rows.find(r => r.classList.contains('list_header')) || rows[0];
+                    const keys = Array.from(headerRowEl.querySelectorAll('td')).map(td => td.innerText.trim());
 
-            if (key && value) {
-                result[key.trim()] = value.trim();
+        
+                    results[sectionName] = rows
+                        .filter(row => {
+                            const cells = row.querySelectorAll('td');
+                            const rowText = row.innerText.toLowerCase();
+                            if (row === headerRowEl) return false;
+                            if (cells.length !== keys.length) return false;
+                            if (rowText.includes("cover no") && rowText.includes("document type")) return false;
+                            return row.innerText.trim() !== "";
+                        })
+                        .map(row => {
+                            const cells = Array.from(row.querySelectorAll('td'));
+                            let obj = {};
+                            keys.forEach((key, i) => {
+                                if (key && cells[i]) {
+                        
+                                    obj[key] = cells[i].innerText.trim();
+                                }
+                            });
+                            return obj;
+                        });
+                } else {
+                    // Standard Key-Value logic
+                    const sectionData = {};
+                    const rows = Array.from(dataTable.querySelectorAll('tr'));
+
+                    rows.forEach(row => {
+                        const captions = Array.from(row.querySelectorAll('td.td_caption'));
+                        const fields = Array.from(row.querySelectorAll('td.td_field'));
+
+                        captions.forEach((cap, index) => {
+                
+                            const key = cap.innerText.replace(/\s+/g, ' ').trim();
+                            const field = fields[index];
+
+                            if (key && field) {
+                                const nestedTable = field.querySelector('table.list_table');
+                                if (nestedTable) {
+                                    const subRows = Array.from(nestedTable.querySelectorAll('tr'));
+                                    const subHeaderRow = subRows.find(r => r.classList.contains('list_header')) || subRows[0];
+                                    const subHeaders = Array.from(subHeaderRow.querySelectorAll('td')).map(td => td.innerText.trim());
+
+                        
+                                    sectionData[key] = subRows
+                                        .filter(sr => {
+                                            const srText = sr.innerText.toLowerCase();
+                                            return sr !== subHeaderRow && sr.innerText.trim() !== "" && !srText.includes("document name");
+                                        })
+                                        .map(subRow => {
+                                            const cells = Array.from(subRow.querySelectorAll('td'));
+                                            let obj = {};
+                                            subHeaders.forEach((h, i) => {
+                                    
+                                                if (h && cells[i]) obj[h] = cells[i].innerText.trim();
+                                            });
+                                            return obj;
+                                        });
+                                } else {
+                        
+                                    sectionData[key] = field.innerText.replace(/\s+/g, ' ').trim();
+                                }
+                            }
+                        });
+                    });
+        
+                    results[sectionName] = sectionData;
+                }
+            });
+
+            return results;
+        });
+
+            // 6. Save data to file
+            const fileName = 'test-results/tender_details.json';
+            try {
+                fs.writeFileSync(fileName, JSON.stringify(nestedTablesJson, null, 2), 'utf-8');
+                console.log(`Successfully saved data to ${fileName}`);
+            } catch (err) {
+                console.error('Error writing file:', err);
             }
-        }
-    }
 
-    fs.writeFileSync('test-results/Tender_details.json', JSON.stringify(result, null, 2));
+    // fs.writeFileSync('test-results/Tender_details.json', JSON.stringify(nestedTablesJson, null, 2));
 }
 
 /**
@@ -154,18 +239,19 @@ async function getCaptchaText(page){
             const base64String = buffer.toString('base64');
             fs.writeFileSync(`captcha${attempt}.png`, base64String, { encoding: 'base64' });
 
-            const prompt = `Give me written letters from given captcha image in the given schema
-                    {
-                        "type": "object",
-                        "properties": {
-                            "captchaText": {
-                            "type": "string"
-                            }
-                        },
-                        "required": [
-                            "captchaText"
-                        ]
-                    }`
+            const prompt = `Extract the text from the provided captcha image. 
+    Strict Rules:
+    1. Use ONLY alphanumeric characters: uppercase (A-Z), lowercase (a-z), and numbers (0-9).
+    2. DO NOT include special characters, punctuation, or accented letters (no Å, Ý, etc).
+    3. Ignore background lines or noise.
+    4. Return strictly in this JSON schema:
+    {
+        "type": "object",
+        "properties": {
+            "captchaText": { "type": "string" }
+        },
+        "required": ["captchaText"]
+    }`;
             const imagePart = {
                 inlineData: {
                 data: base64String,

@@ -28,7 +28,11 @@ export default defineConfig({
   use: {
     /* Base URL to use in actions like `await page.goto('')`. */
     // baseURL: 'http://localhost:3000',
-
+   headless: true,
+   launchOptions: {
+      slowMo: 1000,          // Wait 1 second between every action (click, type, etc.)
+      args: ['--start-maximized'] 
+    },
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
   },
